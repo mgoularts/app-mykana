@@ -1,81 +1,145 @@
 'use client'
 
-import { useState } from 'react'
-import { ArrowRight, CheckCircle2, Pill, Activity, Calendar, ArrowLeft, User, Heart, Stethoscope, Scale, TrendingUp, MessageSquare, AlertCircle, Target, Gift } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { ArrowRight, CheckCircle2, Pill, Activity, Calendar, ArrowLeft, User, Heart, Stethoscope, Scale, TrendingUp, MessageSquare, AlertCircle, Target, Gift, Sparkles, Check, X, FileText } from 'lucide-react'
 import Image from 'next/image'
+import { useRouter } from 'next/navigation'
+import { extractProfileFromQuestionnaire, saveProfile, loadProfile, type PatientProfile, getPersonalizedGreeting, getDashboardPriorities } from '@/lib/patient-profile'
 
-type Screen = 'login' | 'welcome' | 'phases' | 'phase1-detail' | 'questionnaire'
+type Screen = 'login' | 'onboarding' | 'welcome' | 'phases' | 'phase1-detail' | 'questionnaire' | 'payment-annual' | 'payment-plans' | 'profile-view'
 
 interface FormData {
-  // Etapa 1
+  // Dados pessoais
   fullName: string
   email: string
+  password: string
+  confirmPassword: string
+  phone: string
+  cpf: string
   
-  // Etapa 2
+  // Endereço
+  cep: string
+  street: string
+  number: string
+  complement: string
+  neighborhood: string
+  city: string
+  state: string
+  
+  // Informações do tratamento
   treatmentFor: string
   treatmentForOther: string
-  
-  // Etapa 3
   patientName: string
   isForMe: boolean
-  
-  // Etapa 4
   treatmentReasons: string[]
   treatmentReasonsOther: string
-  
-  // Etapa 5
   medicationType: string
   medicationTypeOther: string
-  
-  // Etapa 6
   formulation: string
   formulationOther: string
-  
-  // Etapa 7
   frequency: string
-  
-  // Etapa 8
   doseType: string
   doseTypeOther: string
-  
-  // Etapa 9
   doseAmount: string
   
-  // Etapa 10
+  // Informações de saúde
   biologicalSex: string
   birthDay: string
   birthMonth: string
   birthYear: string
-  
-  // Etapa 11
   height: string
   weight: string
-  
-  // Etapa 12
   activityLevel: string
   
-  // Etapa 13
-  personalMotivation: string
+  // Alergias e condições
+  allergies: string
+  healthConditions: string
+  currentMedications: string
   
-  // Etapa 14
+  // Contatos de emergência
+  emergencyContactName: string
+  emergencyContactPhone: string
+  emergencyContactRelation: string
+  
+  // Médico responsável
+  doctorName: string
+  doctorCRM: string
+  doctorPhone: string
+  
+  // Plano de saúde
+  hasHealthInsurance: boolean
+  healthInsuranceName: string
+  healthInsuranceNumber: string
+  
+  // Motivação e sintomas
+  personalMotivation: string
   sideEffects: string[]
   sideEffectsOther: string
-  
-  // Etapa 15
   mainReason: string
   symptomIntensity: number
   timeLiving: string
   
-  // Etapa 16
+  // Termos e preferências
+  acceptTerms: boolean
+  acceptPrivacy: boolean
+  wantDoseReminders: boolean
+  wantDailyCheckins: boolean
+  wantWeeklyReports: boolean
+  
+  // Código de indicação
   referralCode: string
 }
 
+interface ChecklistItem {
+  id: string
+  title: string
+  description: string
+  completed: boolean
+}
+
 export default function Home() {
+  const router = useRouter()
   const [screen, setScreen] = useState<Screen>('login')
   const [currentStep, setCurrentStep] = useState(0)
+  const [selectedPlan, setSelectedPlan] = useState<'monthly' | 'quarterly' | 'annual'>('annual')
+  const [loginEmail, setLoginEmail] = useState('')
+  const [loginPassword, setLoginPassword] = useState('')
+  const [loginError, setLoginError] = useState('')
+  const [patientProfile, setPatientProfile] = useState<PatientProfile | null>(null)
+  const [checklist, setChecklist] = useState<ChecklistItem[]>([
+    {
+      id: 'dose',
+      title: 'Registrar primeira dose',
+      description: 'Comece seu acompanhamento registrando sua primeira dose',
+      completed: false
+    },
+    {
+      id: 'reminders',
+      title: 'Ativar lembretes',
+      description: 'Configure notificações para nunca esquecer suas doses',
+      completed: false
+    },
+    {
+      id: 'checkin',
+      title: 'Fazer primeiro check-in',
+      description: 'Registre como você está se sentindo hoje',
+      completed: false
+    }
+  ])
   const [formData, setFormData] = useState<FormData>({
     fullName: '',
     email: '',
+    password: '',
+    confirmPassword: '',
+    phone: '',
+    cpf: '',
+    cep: '',
+    street: '',
+    number: '',
+    complement: '',
+    neighborhood: '',
+    city: '',
+    state: '',
     treatmentFor: '',
     treatmentForOther: '',
     patientName: '',
@@ -97,16 +161,33 @@ export default function Home() {
     height: '',
     weight: '',
     activityLevel: '',
+    allergies: '',
+    healthConditions: '',
+    currentMedications: '',
+    emergencyContactName: '',
+    emergencyContactPhone: '',
+    emergencyContactRelation: '',
+    doctorName: '',
+    doctorCRM: '',
+    doctorPhone: '',
+    hasHealthInsurance: false,
+    healthInsuranceName: '',
+    healthInsuranceNumber: '',
     personalMotivation: '',
     sideEffects: [],
     sideEffectsOther: '',
     mainReason: '',
     symptomIntensity: 5,
     timeLiving: '',
+    acceptTerms: false,
+    acceptPrivacy: false,
+    wantDoseReminders: true,
+    wantDailyCheckins: true,
+    wantWeeklyReports: true,
     referralCode: ''
   })
 
-  const totalSteps = 16
+  const totalSteps = 25
   const progress = ((currentStep + 1) / totalSteps) * 100
 
   const updateFormData = (field: keyof FormData, value: any) => {
@@ -124,15 +205,51 @@ export default function Home() {
     })
   }
 
+  const toggleChecklistItem = (id: string) => {
+    setChecklist(prev => prev.map(item => 
+      item.id === id ? { ...item, completed: !item.completed } : item
+    ))
+  }
+
+  const completedCount = checklist.filter(item => item.completed).length
+  const totalChecklistItems = checklist.length
+
   const nextStep = () => {
     if (currentStep < totalSteps - 1) {
       setCurrentStep(currentStep + 1)
+    } else if (currentStep === totalSteps - 1) {
+      // Ao finalizar o questionário, extrai perfil e vai para tela de pagamento
+      const profile = extractProfileFromQuestionnaire(formData)
+      saveProfile(profile)
+      setPatientProfile(profile)
+      setScreen('payment-annual')
     }
   }
+
+  // Carregar perfil ao montar componente
+  useEffect(() => {
+    const savedProfile = loadProfile()
+    if (savedProfile) {
+      setPatientProfile(savedProfile)
+    }
+  }, [])
 
   const prevStep = () => {
     if (currentStep > 0) {
       setCurrentStep(currentStep - 1)
+    }
+  }
+
+  // Função de Login
+  const handleLogin = () => {
+    setLoginError('')
+    
+    // Validação de credenciais de administrador
+    if (loginEmail === 'admin@admin' && loginPassword === 'admin#123@') {
+      // Admin vai direto para o dashboard
+      router.push('/dashboard')
+    } else {
+      setLoginError('Credenciais inválidas.')
     }
   }
 
@@ -141,7 +258,7 @@ export default function Home() {
     return (
       <div className="min-h-screen bg-white flex flex-col">
         {/* Header */}
-        <div className="bg-gradient-to-br from-white to-gray-50 border-b-2 border-gray-100 py-6 px-4 sm:px-6">
+        <div className="bg-gradient-to-br from-slate-50 to-cyan-50 border-b-2 border-slate-200 py-6 px-4 sm:px-6">
           <div className="max-w-md mx-auto flex items-center gap-3">
             <Image 
               src="https://k6hrqrxuu8obbfwn.public.blob.vercel-storage.com/temp/7ddfae3d-7621-4fa3-8511-d4c5d3ddd754.png"
@@ -151,52 +268,76 @@ export default function Home() {
               className="h-10 w-auto"
             />
           </div>
-          <p className="text-sm sm:text-base text-gray-600 mt-3 max-w-md mx-auto font-medium">Seu assistente de tratamento personalizado</p>
+          <p className="text-sm sm:text-base text-slate-600 mt-3 max-w-md mx-auto font-medium">Seu assistente de tratamento personalizado</p>
         </div>
 
         {/* Content */}
         <div className="flex-1 flex items-center justify-center px-4 py-8">
           <div className="w-full max-w-md space-y-6">
+            {/* Logo MyKana acima do Bem-vindo */}
+            <div className="flex justify-center mb-4">
+              <img 
+                src="https://k6hrqrxuu8obbfwn.public.blob.vercel-storage.com/temp/5c4d00d8-7f79-43ed-93f5-f34c13e5d55c.png" 
+                alt="MyKana Logo" 
+                className="h-24 w-auto"
+              />
+            </div>
+
             <div className="text-center space-y-2">
-              <h2 className="text-2xl sm:text-3xl font-bold text-[#445860] font-inter">Bem-vindo</h2>
-              <p className="text-gray-600">Faça login ou crie sua conta para começar</p>
+              <h2 className="text-2xl sm:text-3xl font-bold text-slate-700 font-inter">Bem-vindo</h2>
+              <p className="text-slate-600">Faça login ou crie sua conta para começar</p>
             </div>
 
             <div className="space-y-4">
               <input
                 type="email"
                 placeholder="Seu e-mail"
-                className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-[#5AAE45] focus:outline-none transition-colors"
+                value={loginEmail}
+                onChange={(e) => setLoginEmail(e.target.value)}
+                className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-teal-500 focus:outline-none transition-colors"
               />
               <input
                 type="password"
                 placeholder="Sua senha"
-                className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-[#5AAE45] focus:outline-none transition-colors"
+                value={loginPassword}
+                onChange={(e) => setLoginPassword(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
+                className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-teal-500 focus:outline-none transition-colors"
               />
               
-              <button className="w-full bg-[#445860] text-white py-3 rounded-xl font-semibold hover:bg-[#556870] transition-all duration-300 hover:scale-[1.02]">
+              {loginError && (
+                <div className="bg-red-50 border-2 border-red-200 rounded-xl p-3 flex items-start gap-2">
+                  <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+                  <p className="text-sm text-red-700">{loginError}</p>
+                </div>
+              )}
+
+              <button 
+                onClick={handleLogin}
+                className="w-full bg-slate-700 text-white py-3 rounded-xl font-semibold hover:bg-slate-800 transition-all duration-300 hover:scale-[1.02]"
+              >
                 Entrar
               </button>
 
               <div className="relative">
                 <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-gray-200"></div>
+                  <div className="w-full border-t border-slate-200"></div>
                 </div>
                 <div className="relative flex justify-center text-sm">
-                  <span className="px-4 bg-white text-gray-500">ou</span>
+                  <span className="px-4 bg-white text-slate-500">ou</span>
                 </div>
               </div>
 
               <button 
-                onClick={() => setScreen('welcome')}
-                className="w-full bg-[#5AAE45] text-white py-3 rounded-xl font-semibold hover:bg-[#4a9d38] transition-all duration-300 hover:scale-[1.02] flex items-center justify-center gap-2"
+                onClick={() => setScreen('questionnaire')}
+                className="w-full bg-teal-600 text-white py-3 rounded-xl font-semibold hover:bg-teal-700 transition-all duration-300 hover:scale-[1.02] flex items-center justify-center gap-2"
               >
                 Cadastrar
                 <ArrowRight className="w-5 h-5" />
               </button>
             </div>
 
-            <p className="text-center text-sm text-gray-500">
+            <p className="text-center text-sm text-slate-500">
               Ao continuar, você concorda com nossos termos de uso
             </p>
           </div>
@@ -205,1117 +346,998 @@ export default function Home() {
     )
   }
 
-  // Tela de Boas-vindas (Tela 1)
-  if (screen === 'welcome') {
+  // Tela de Questionário (25 Etapas)
+  if (screen === 'questionnaire') {
     return (
-      <div className="min-h-screen bg-white flex flex-col">
-        <div className="bg-gradient-to-br from-white to-gray-50 border-b-2 border-gray-100 py-6 px-4 sm:px-6">
-          <div className="max-w-2xl mx-auto flex items-center gap-3">
-            <Image 
-              src="https://k6hrqrxuu8obbfwn.public.blob.vercel-storage.com/temp/7ddfae3d-7621-4fa3-8511-d4c5d3ddd754.png"
-              alt="MyKana"
-              width={180}
-              height={50}
-              className="h-10 w-auto"
-            />
-          </div>
-        </div>
-
-        <div className="flex-1 flex items-center justify-center px-4 py-8">
-          <div className="w-full max-w-2xl space-y-8">
-            <div className="text-center space-y-4">
-              <div className="w-20 h-20 bg-[#5AAE45] rounded-full flex items-center justify-center mx-auto">
-                <CheckCircle2 className="w-10 h-10 text-white" />
-              </div>
-              <h2 className="text-3xl sm:text-4xl font-bold text-[#445860] font-inter">Ótima escolha!</h2>
-            </div>
-
-            <div className="bg-gray-50 rounded-2xl p-6 sm:p-8 space-y-6">
-              <div className="space-y-4">
-                <div className="flex items-start gap-3">
-                  <div className="w-8 h-8 bg-[#5AAE45] rounded-full flex items-center justify-center flex-shrink-0 mt-1">
-                    <span className="text-white font-bold">✓</span>
-                  </div>
-                  <p className="text-lg text-gray-700 leading-relaxed">
-                    Agora é só seguir nosso passo a passo
-                  </p>
-                </div>
-
-                <div className="flex items-start gap-3">
-                  <div className="w-8 h-8 bg-[#5AAE45] rounded-full flex items-center justify-center flex-shrink-0 mt-1">
-                    <span className="text-white font-bold">✓</span>
-                  </div>
-                  <p className="text-lg text-gray-700 leading-relaxed">
-                    Nossa intenção é deixar o tratamento o mais adequado possível ao paciente e facilitar
-                  </p>
-                </div>
-
-                <div className="flex items-start gap-3">
-                  <div className="w-8 h-8 bg-[#5AAE45] rounded-full flex items-center justify-center flex-shrink-0 mt-1">
-                    <span className="text-white font-bold">✓</span>
-                  </div>
-                  <p className="text-lg text-gray-700 leading-relaxed">
-                    Todo o passo a passo leva apenas alguns minutos
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <button 
-              onClick={() => setScreen('phases')}
-              className="w-full bg-[#5AAE45] text-white py-4 rounded-xl font-semibold text-lg hover:bg-[#4a9d38] transition-all duration-300 hover:scale-[1.02] flex items-center justify-center gap-2"
-            >
-              Continuar
-              <ArrowRight className="w-6 h-6" />
-            </button>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  // Tela das 3 Fases (Tela 2)
-  if (screen === 'phases') {
-    return (
-      <div className="min-h-screen bg-white flex flex-col">
-        <div className="bg-gradient-to-br from-white to-gray-50 border-b-2 border-gray-100 py-6 px-4 sm:px-6">
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-cyan-50 flex flex-col">
+        {/* Header com Progresso */}
+        <div className="bg-white border-b-2 border-slate-200 py-4 px-4 sm:px-6">
           <div className="max-w-2xl mx-auto">
-            <Image 
-              src="https://k6hrqrxuu8obbfwn.public.blob.vercel-storage.com/temp/7ddfae3d-7621-4fa3-8511-d4c5d3ddd754.png"
-              alt="MyKana"
-              width={180}
-              height={50}
-              className="h-10 w-auto"
-            />
-          </div>
-        </div>
-
-        <div className="flex-1 flex items-center justify-center px-4 py-8">
-          <div className="w-full max-w-2xl space-y-8">
-            <div className="text-center space-y-2">
-              <h2 className="text-3xl sm:text-4xl font-bold text-[#445860] font-inter">
-                Nosso Processo
-              </h2>
-              <p className="text-gray-600">Três fases simples para personalizar seu tratamento</p>
-            </div>
-
-            <div className="space-y-6">
-              <div className="bg-gradient-to-r from-[#5AAE45] to-[#4a9d38] text-white rounded-2xl p-6">
-                <div className="flex items-start gap-4">
-                  <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center flex-shrink-0">
-                    <span className="text-white font-bold text-xl">1</span>
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-xl mb-2">Fase 1</h3>
-                    <p className="text-white/90">Vamos identificar e definir seu objetivo e sintomas</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-gray-50 border-2 border-gray-200 rounded-2xl p-6">
-                <div className="flex items-start gap-4">
-                  <div className="w-12 h-12 bg-[#445860] rounded-xl flex items-center justify-center flex-shrink-0">
-                    <span className="text-white font-bold text-xl">2</span>
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-xl text-[#445860] mb-2">Fase 2</h3>
-                    <p className="text-gray-600">Entenda o funcionamento do aplicativo</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-gray-50 border-2 border-gray-200 rounded-2xl p-6">
-                <div className="flex items-start gap-4">
-                  <div className="w-12 h-12 bg-[#445860] rounded-xl flex items-center justify-center flex-shrink-0">
-                    <span className="text-white font-bold text-xl">3</span>
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-xl text-[#445860] mb-2">Fase 3</h3>
-                    <p className="text-gray-600">Acompanhamento do seu tratamento</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <button 
-              onClick={() => setScreen('phase1-detail')}
-              className="w-full bg-[#5AAE45] text-white py-4 rounded-xl font-semibold text-lg hover:bg-[#4a9d38] transition-all duration-300 hover:scale-[1.02] flex items-center justify-center gap-2"
-            >
-              Continuar
-              <ArrowRight className="w-6 h-6" />
-            </button>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  // Detalhes da Fase 1 (Tela 4)
-  if (screen === 'phase1-detail') {
-    return (
-      <div className="min-h-screen bg-white flex flex-col">
-        <div className="bg-gradient-to-br from-white to-gray-50 border-b-2 border-gray-100 py-6 px-4 sm:px-6">
-          <div className="max-w-2xl mx-auto">
-            <Image 
-              src="https://k6hrqrxuu8obbfwn.public.blob.vercel-storage.com/temp/7ddfae3d-7621-4fa3-8511-d4c5d3ddd754.png"
-              alt="MyKana"
-              width={180}
-              height={50}
-              className="h-10 w-auto"
-            />
-            <p className="text-sm text-gray-600 mt-2 font-medium">Fase 1 - Preparação</p>
-          </div>
-        </div>
-
-        <div className="flex-1 flex items-center justify-center px-4 py-8">
-          <div className="w-full max-w-2xl space-y-8">
-            <div className="text-center space-y-4">
-              <div className="w-20 h-20 bg-[#5AAE45] rounded-full flex items-center justify-center mx-auto">
-                <Pill className="w-10 h-10 text-white" />
-              </div>
-              <h2 className="text-3xl sm:text-4xl font-bold text-[#445860] font-inter">
-                Fase 1
-              </h2>
-              <p className="text-xl text-gray-600">Identificar e definir seu objetivo e sintomas</p>
-            </div>
-
-            <div className="bg-gray-50 rounded-2xl p-6 sm:p-8 space-y-6">
-              <div className="space-y-4">
-                <div className="flex items-start gap-3">
-                  <CheckCircle2 className="w-6 h-6 text-[#5AAE45] flex-shrink-0 mt-1" />
-                  <p className="text-gray-700 leading-relaxed">
-                    Agora vamos identificar e definir seu objetivo e sintomas
-                  </p>
-                </div>
-
-                <div className="flex items-start gap-3">
-                  <CheckCircle2 className="w-6 h-6 text-[#5AAE45] flex-shrink-0 mt-1" />
-                  <p className="text-gray-700 leading-relaxed">
-                    Ter a embalagem do medicamento utilizado pode ajudar a realizar o preenchimento
-                  </p>
-                </div>
-
-                <div className="flex items-start gap-3">
-                  <AlertCircle className="w-6 h-6 text-blue-500 flex-shrink-0 mt-1" />
-                  <p className="text-gray-700 leading-relaxed">
-                    Este aplicativo não tem a intenção de substituir seu médico, mas sim ajudar a auxiliar no monitoramento e esclarecimento de dúvidas do tratamento
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <button 
-              onClick={() => setScreen('questionnaire')}
-              className="w-full bg-[#5AAE45] text-white py-4 rounded-xl font-semibold text-lg hover:bg-[#4a9d38] transition-all duration-300 hover:scale-[1.02] flex items-center justify-center gap-2"
-            >
-              Iniciar Questionário
-              <ArrowRight className="w-6 h-6" />
-            </button>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  // Questionário com 16 Etapas
-  const renderQuestionnaireStep = () => {
-    switch (currentStep) {
-      // Etapa 1: Informações Básicas
-      case 0:
-        return (
-          <div className="space-y-6">
-            <div className="text-center space-y-2">
-              <h2 className="text-2xl sm:text-3xl font-bold text-[#445860]">
-                Vamos Personalizar Seu Tratamento!
-              </h2>
-              <p className="text-gray-600">
-                Levará apenas alguns minutos e ajudará a criar um plano feito sob medida para você!
-              </p>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Qual é o seu nome completo? *
-                </label>
-                <input
-                  type="text"
-                  value={formData.fullName}
-                  onChange={(e) => updateFormData('fullName', e.target.value)}
-                  placeholder="Digite seu nome completo"
-                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-[#5AAE45] focus:outline-none transition-colors"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Qual é o seu e-mail? *
-                </label>
-                <input
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) => updateFormData('email', e.target.value)}
-                  placeholder="seu@email.com"
-                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-[#5AAE45] focus:outline-none transition-colors"
-                />
-              </div>
-            </div>
-          </div>
-        )
-
-      // Etapa 2: Monitoramento do Tratamento
-      case 1:
-        const treatmentOptions = [
-          'Para mim', 'Filho(a)', 'Esposo(a)', 'Pai', 'Mãe', 
-          'Irmã(o)', 'Tio(a)', 'Primo(a)', 'Sobrinho(a)', 'Outro'
-        ]
-        return (
-          <div className="space-y-6">
-            <div className="text-center space-y-2">
-              <User className="w-16 h-16 text-[#5AAE45] mx-auto" />
-              <h2 className="text-2xl sm:text-3xl font-bold text-[#445860]">
-                Para quem será o monitoramento?
-              </h2>
-              <p className="text-gray-600">Escolha uma opção abaixo</p>
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              {treatmentOptions.map((option) => (
-                <button
-                  key={option}
-                  onClick={() => updateFormData('treatmentFor', option)}
-                  className={`p-4 rounded-xl border-2 transition-all ${
-                    formData.treatmentFor === option
-                      ? 'border-[#5AAE45] bg-green-50 text-[#5AAE45] font-semibold'
-                      : 'border-gray-200 hover:border-[#445860] text-gray-700'
-                  }`}
-                >
-                  {option}
-                </button>
-              ))}
-            </div>
-
-            {formData.treatmentFor === 'Outro' && (
-              <input
-                type="text"
-                value={formData.treatmentForOther}
-                onChange={(e) => updateFormData('treatmentForOther', e.target.value)}
-                placeholder="Especifique..."
-                className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-[#5AAE45] focus:outline-none transition-colors"
-              />
-            )}
-          </div>
-        )
-
-      // Etapa 3: Nome do Paciente
-      case 2:
-        return (
-          <div className="space-y-6">
-            <div className="text-center space-y-2">
-              <Heart className="w-16 h-16 text-[#5AAE45] mx-auto" />
-              <h2 className="text-2xl sm:text-3xl font-bold text-[#445860]">
-                Qual o nome de quem realizará o tratamento?
-              </h2>
-            </div>
-
-            <div className="space-y-4">
-              <div className="flex items-center gap-3 bg-gray-50 p-4 rounded-xl">
-                <input
-                  type="checkbox"
-                  id="isForMe"
-                  checked={formData.isForMe}
-                  onChange={(e) => {
-                    updateFormData('isForMe', e.target.checked)
-                    if (e.target.checked) {
-                      updateFormData('patientName', formData.fullName)
-                    }
-                  }}
-                  className="w-5 h-5 text-[#5AAE45] rounded focus:ring-[#5AAE45]"
-                />
-                <label htmlFor="isForMe" className="text-gray-700 font-medium cursor-pointer">
-                  É para mim, pular esta etapa
-                </label>
-              </div>
-
-              {!formData.isForMe && (
-                <input
-                  type="text"
-                  value={formData.patientName}
-                  onChange={(e) => updateFormData('patientName', e.target.value)}
-                  placeholder="Nome do paciente"
-                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-[#5AAE45] focus:outline-none transition-colors"
-                />
-              )}
-            </div>
-          </div>
-        )
-
-      // Etapa 4: Motivo do Tratamento
-      case 3:
-        const reasons = [
-          'Dor crônica', 'Ansiedade', 'Insônia/distúrbios do sono', 
-          'Epilepsia/crises convulsivas', 'Espasticidade muscular',
-          'Náuseas por quimioterapia', 'Depressão', 
-          'Transtorno de Estresse Pós-Traumático', 'Enxaqueca',
-          'Transtorno do Espectro Autista', 'Outros'
-        ]
-        return (
-          <div className="space-y-6">
-            <div className="text-center space-y-2">
-              <Stethoscope className="w-16 h-16 text-[#5AAE45] mx-auto" />
-              <h2 className="text-2xl sm:text-3xl font-bold text-[#445860]">
-                Por qual motivo você realiza o tratamento?
-              </h2>
-              <p className="text-gray-600">Pode selecionar mais de uma opção</p>
-            </div>
-
-            <div className="space-y-3">
-              {reasons.map((reason) => (
-                <button
-                  key={reason}
-                  onClick={() => toggleArrayItem('treatmentReasons', reason)}
-                  className={`w-full p-4 rounded-xl border-2 text-left transition-all ${
-                    formData.treatmentReasons.includes(reason)
-                      ? 'border-[#5AAE45] bg-green-50 text-[#5AAE45] font-semibold'
-                      : 'border-gray-200 hover:border-[#445860] text-gray-700'
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <div className={`w-5 h-5 rounded border-2 flex items-center justify-center ${
-                      formData.treatmentReasons.includes(reason)
-                        ? 'border-[#5AAE45] bg-[#5AAE45]'
-                        : 'border-gray-300'
-                    }`}>
-                      {formData.treatmentReasons.includes(reason) && (
-                        <CheckCircle2 className="w-4 h-4 text-white" />
-                      )}
-                    </div>
-                    {reason}
-                  </div>
-                </button>
-              ))}
-            </div>
-
-            {formData.treatmentReasons.includes('Outros') && (
-              <input
-                type="text"
-                value={formData.treatmentReasonsOther}
-                onChange={(e) => updateFormData('treatmentReasonsOther', e.target.value)}
-                placeholder="Especifique outros motivos..."
-                className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-[#5AAE45] focus:outline-none transition-colors"
-              />
-            )}
-          </div>
-        )
-
-      // Etapa 5: Tipo de Medicamento
-      case 4:
-        const medicationTypes = ['Óleo', 'Goma', 'Vaporizado', 'Gel', 'Creme', 'Fita', 'Outro']
-        return (
-          <div className="space-y-6">
-            <div className="text-center space-y-2">
-              <Pill className="w-16 h-16 text-[#5AAE45] mx-auto" />
-              <h2 className="text-2xl sm:text-3xl font-bold text-[#445860]">
-                Qual tipo de medicamento você utiliza?
-              </h2>
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              {medicationTypes.map((type) => (
-                <button
-                  key={type}
-                  onClick={() => updateFormData('medicationType', type)}
-                  className={`p-4 rounded-xl border-2 transition-all ${
-                    formData.medicationType === type
-                      ? 'border-[#5AAE45] bg-green-50 text-[#5AAE45] font-semibold'
-                      : 'border-gray-200 hover:border-[#445860] text-gray-700'
-                  }`}
-                >
-                  {type}
-                </button>
-              ))}
-            </div>
-
-            {formData.medicationType === 'Outro' && (
-              <input
-                type="text"
-                value={formData.medicationTypeOther}
-                onChange={(e) => updateFormData('medicationTypeOther', e.target.value)}
-                placeholder="Especifique..."
-                className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-[#5AAE45] focus:outline-none transition-colors"
-              />
-            )}
-          </div>
-        )
-
-      // Etapa 6: Formulação Utilizada
-      case 5:
-        const formulations = [
-          'Full Spectrum', 'Broad Spectrum', 'CBD Isolado', 
-          'CBG Isolado', 'CBN Isolado', 'THC Isolado', 
-          'THC-V Isolado', 'Outro'
-        ]
-        return (
-          <div className="space-y-6">
-            <div className="text-center space-y-2">
-              <Activity className="w-16 h-16 text-[#5AAE45] mx-auto" />
-              <h2 className="text-2xl sm:text-3xl font-bold text-[#445860]">
-                Qual formulação você utiliza?
-              </h2>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {formulations.map((formulation) => (
-                <button
-                  key={formulation}
-                  onClick={() => updateFormData('formulation', formulation)}
-                  className={`p-4 rounded-xl border-2 transition-all ${
-                    formData.formulation === formulation
-                      ? 'border-[#5AAE45] bg-green-50 text-[#5AAE45] font-semibold'
-                      : 'border-gray-200 hover:border-[#445860] text-gray-700'
-                  }`}
-                >
-                  {formulation}
-                </button>
-              ))}
-            </div>
-
-            {formData.formulation === 'Outro' && (
-              <input
-                type="text"
-                value={formData.formulationOther}
-                onChange={(e) => updateFormData('formulationOther', e.target.value)}
-                placeholder="Especifique..."
-                className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-[#5AAE45] focus:outline-none transition-colors"
-              />
-            )}
-          </div>
-        )
-
-      // Tela de Incentivo 1
-      case 6:
-        return (
-          <div className="space-y-6">
-            <div className="text-center space-y-4">
-              <div className="w-20 h-20 bg-gradient-to-br from-[#5AAE45] to-[#4a9d38] rounded-full flex items-center justify-center mx-auto">
-                <TrendingUp className="w-10 h-10 text-white" />
-              </div>
-              <h2 className="text-3xl sm:text-4xl font-bold text-[#445860]">
-                Estamos quase lá! 💪
-              </h2>
-              <p className="text-xl text-gray-600">
-                Suas respostas são essenciais para um tratamento eficaz
-              </p>
-            </div>
-
-            <div className="bg-gradient-to-r from-[#5AAE45] to-[#4a9d38] text-white rounded-2xl p-8 text-center">
-              <p className="text-lg leading-relaxed">
-                Você está fazendo um ótimo trabalho! Continue respondendo para que possamos personalizar ainda mais seu acompanhamento.
-              </p>
-            </div>
-          </div>
-        )
-
-      // Etapa 7: Frequência de Uso
-      case 7:
-        const frequencies = [
-          'Uma vez ao dia', 'Duas vezes por dia', 'Três vezes por dia',
-          'Quatro vezes por dia', 'Cinco ou mais vezes por dia',
-          'Uma vez a cada 2 dias', 'Uma vez a cada 3 dias',
-          'Uma vez por semana', 'Ainda em adaptação'
-        ]
-        return (
-          <div className="space-y-6">
-            <div className="text-center space-y-2">
-              <Calendar className="w-16 h-16 text-[#5AAE45] mx-auto" />
-              <h2 className="text-2xl sm:text-3xl font-bold text-[#445860]">
-                Com que frequência você usa o medicamento?
-              </h2>
-            </div>
-
-            <div className="space-y-3">
-              {frequencies.map((freq) => (
-                <button
-                  key={freq}
-                  onClick={() => updateFormData('frequency', freq)}
-                  className={`w-full p-4 rounded-xl border-2 text-left transition-all ${
-                    formData.frequency === freq
-                      ? 'border-[#5AAE45] bg-green-50 text-[#5AAE45] font-semibold'
-                      : 'border-gray-200 hover:border-[#445860] text-gray-700'
-                  }`}
-                >
-                  {freq}
-                </button>
-              ))}
-            </div>
-          </div>
-        )
-
-      // Etapa 8: Tipo de Dose
-      case 8:
-        const doseTypes = ['Gotas', 'ml', 'mg', 'Gomas', 'Pump', 'Fita', 'Outro']
-        return (
-          <div className="space-y-6">
-            <div className="text-center space-y-2">
-              <Pill className="w-16 h-16 text-[#5AAE45] mx-auto" />
-              <h2 className="text-2xl sm:text-3xl font-bold text-[#445860]">
-                Que tipo de dose você utiliza?
-              </h2>
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              {doseTypes.map((type) => (
-                <button
-                  key={type}
-                  onClick={() => updateFormData('doseType', type)}
-                  className={`p-4 rounded-xl border-2 transition-all ${
-                    formData.doseType === type
-                      ? 'border-[#5AAE45] bg-green-50 text-[#5AAE45] font-semibold'
-                      : 'border-gray-200 hover:border-[#445860] text-gray-700'
-                  }`}
-                >
-                  {type}
-                </button>
-              ))}
-            </div>
-
-            {formData.doseType === 'Outro' && (
-              <input
-                type="text"
-                value={formData.doseTypeOther}
-                onChange={(e) => updateFormData('doseTypeOther', e.target.value)}
-                placeholder="Especifique..."
-                className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-[#5AAE45] focus:outline-none transition-colors"
-              />
-            )}
-          </div>
-        )
-
-      // Etapa 9: Quantidade por Dose
-      case 9:
-        return (
-          <div className="space-y-6">
-            <div className="text-center space-y-2">
-              <Scale className="w-16 h-16 text-[#5AAE45] mx-auto" />
-              <h2 className="text-2xl sm:text-3xl font-bold text-[#445860]">
-                Qual a quantidade utilizada por dose?
-              </h2>
-            </div>
-
-            <div>
-              <input
-                type="number"
-                step="0.1"
-                value={formData.doseAmount}
-                onChange={(e) => updateFormData('doseAmount', e.target.value)}
-                placeholder="Ex: 2.5"
-                className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-[#5AAE45] focus:outline-none transition-colors text-center text-2xl font-semibold"
-              />
-              <p className="text-center text-gray-500 mt-2">
-                {formData.doseType || 'unidades'}
-              </p>
-            </div>
-          </div>
-        )
-
-      // Etapa 10: Dados Pessoais
-      case 10:
-        const days = Array.from({ length: 31 }, (_, i) => String(i + 1).padStart(2, '0'))
-        const months = [
-          'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
-          'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
-        ]
-        const years = Array.from({ length: 107 }, (_, i) => String(2026 - i))
-        
-        return (
-          <div className="space-y-6">
-            <div className="text-center space-y-2">
-              <User className="w-16 h-16 text-[#5AAE45] mx-auto" />
-              <h2 className="text-2xl sm:text-3xl font-bold text-[#445860]">
-                Dados Pessoais
-              </h2>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Sexo biológico *
-                </label>
-                <div className="grid grid-cols-2 gap-3">
-                  <button
-                    onClick={() => updateFormData('biologicalSex', 'Masculino')}
-                    className={`p-4 rounded-xl border-2 transition-all ${
-                      formData.biologicalSex === 'Masculino'
-                        ? 'border-[#5AAE45] bg-green-50 text-[#5AAE45] font-semibold'
-                        : 'border-gray-200 hover:border-[#445860] text-gray-700'
-                    }`}
-                  >
-                    Masculino
-                  </button>
-                  <button
-                    onClick={() => updateFormData('biologicalSex', 'Feminino')}
-                    className={`p-4 rounded-xl border-2 transition-all ${
-                      formData.biologicalSex === 'Feminino'
-                        ? 'border-[#5AAE45] bg-green-50 text-[#5AAE45] font-semibold'
-                        : 'border-gray-200 hover:border-[#445860] text-gray-700'
-                    }`}
-                  >
-                    Feminino
-                  </button>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Data de nascimento *
-                </label>
-                <div className="grid grid-cols-3 gap-3">
-                  <select
-                    value={formData.birthDay}
-                    onChange={(e) => updateFormData('birthDay', e.target.value)}
-                    className="px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-[#5AAE45] focus:outline-none transition-colors"
-                  >
-                    <option value="">Dia</option>
-                    {days.map(day => <option key={day} value={day}>{day}</option>)}
-                  </select>
-                  <select
-                    value={formData.birthMonth}
-                    onChange={(e) => updateFormData('birthMonth', e.target.value)}
-                    className="px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-[#5AAE45] focus:outline-none transition-colors"
-                  >
-                    <option value="">Mês</option>
-                    {months.map((month, idx) => (
-                      <option key={month} value={String(idx + 1).padStart(2, '0')}>{month}</option>
-                    ))}
-                  </select>
-                  <select
-                    value={formData.birthYear}
-                    onChange={(e) => updateFormData('birthYear', e.target.value)}
-                    className="px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-[#5AAE45] focus:outline-none transition-colors"
-                  >
-                    <option value="">Ano</option>
-                    {years.map(year => <option key={year} value={year}>{year}</option>)}
-                  </select>
-                </div>
-              </div>
-            </div>
-          </div>
-        )
-
-      // Etapa 11: Medidas
-      case 11:
-        const heights = Array.from({ length: 241 }, (_, i) => String(i + 10))
-        const weights = Array.from({ length: 400 }, (_, i) => String(i + 1))
-        
-        return (
-          <div className="space-y-6">
-            <div className="text-center space-y-2">
-              <Scale className="w-16 h-16 text-[#5AAE45] mx-auto" />
-              <h2 className="text-2xl sm:text-3xl font-bold text-[#445860]">
-                Quais as suas medidas?
-              </h2>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Altura (cm) *
-                </label>
-                <select
-                  value={formData.height}
-                  onChange={(e) => updateFormData('height', e.target.value)}
-                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-[#5AAE45] focus:outline-none transition-colors"
-                >
-                  <option value="">Selecione sua altura</option>
-                  {heights.map(h => <option key={h} value={h}>{h} cm</option>)}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Peso (kg) *
-                </label>
-                <select
-                  value={formData.weight}
-                  onChange={(e) => updateFormData('weight', e.target.value)}
-                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-[#5AAE45] focus:outline-none transition-colors"
-                >
-                  <option value="">Selecione seu peso</option>
-                  {weights.map(w => <option key={w} value={w}>{w} kg</option>)}
-                </select>
-              </div>
-            </div>
-          </div>
-        )
-
-      // Etapa 12: Nível de Atividade Física
-      case 12:
-        const activityLevels = [
-          'Incapaz de realizar', 'Temporariamente incapaz', 'Sedentário',
-          'Levemente ativo', 'Moderadamente ativo', 'Ativo', 'Muito ativo'
-        ]
-        return (
-          <div className="space-y-6">
-            <div className="text-center space-y-2">
-              <Activity className="w-16 h-16 text-[#5AAE45] mx-auto" />
-              <h2 className="text-2xl sm:text-3xl font-bold text-[#445860]">
-                Qual seu nível de atividade física?
-              </h2>
-            </div>
-
-            <div className="space-y-3">
-              {activityLevels.map((level) => (
-                <button
-                  key={level}
-                  onClick={() => updateFormData('activityLevel', level)}
-                  className={`w-full p-4 rounded-xl border-2 text-left transition-all ${
-                    formData.activityLevel === level
-                      ? 'border-[#5AAE45] bg-green-50 text-[#5AAE45] font-semibold'
-                      : 'border-gray-200 hover:border-[#445860] text-gray-700'
-                  }`}
-                >
-                  {level}
-                </button>
-              ))}
-            </div>
-          </div>
-        )
-
-      // Tela de Incentivo 2
-      case 13:
-        return (
-          <div className="space-y-6">
-            <div className="text-center space-y-4">
-              <div className="w-20 h-20 bg-gradient-to-br from-[#5AAE45] to-[#4a9d38] rounded-full flex items-center justify-center mx-auto">
-                <Heart className="w-10 h-10 text-white" />
-              </div>
-              <h2 className="text-3xl sm:text-4xl font-bold text-[#445860]">
-                Estamos chegando ao final!
-              </h2>
-              <p className="text-xl text-gray-600">
-                Sua saúde é prioridade para nós
-              </p>
-            </div>
-
-            <div className="bg-gradient-to-r from-[#5AAE45] to-[#4a9d38] text-white rounded-2xl p-8 text-center">
-              <p className="text-lg leading-relaxed">
-                Falta pouco! As últimas perguntas nos ajudarão a entender melhor sua jornada e oferecer o melhor suporte possível.
-              </p>
-            </div>
-          </div>
-        )
-
-      // Etapa 13: Motivação Pessoal
-      case 14:
-        return (
-          <div className="space-y-6">
-            <div className="text-center space-y-2">
-              <MessageSquare className="w-16 h-16 text-[#5AAE45] mx-auto" />
-              <h2 className="text-2xl sm:text-3xl font-bold text-[#445860]">
-                Sua História
-              </h2>
-              <p className="text-gray-600">
-                Escreva com suas próprias palavras o que te fez procurar o tratamento com Cannabis
-              </p>
-            </div>
-
-            <textarea
-              value={formData.personalMotivation}
-              onChange={(e) => updateFormData('personalMotivation', e.target.value)}
-              placeholder="Compartilhe sua história conosco..."
-              rows={6}
-              className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-[#5AAE45] focus:outline-none transition-colors resize-none"
-            />
-          </div>
-        )
-
-      // Etapa 14: Efeitos Colaterais
-      case 15:
-        const sideEffects = [
-          'Sonolência', 'Boca seca', 'Tontura', 'Alterações cognitivas leves',
-          'Ansiedade ou agitação', 'Taquicardia', 'Náusea',
-          'Desconforto gastrointestinal', 'Alteração de humor',
-          'Queda de pressão', 'Outro'
-        ]
-        return (
-          <div className="space-y-6">
-            <div className="text-center space-y-2">
-              <AlertCircle className="w-16 h-16 text-[#5AAE45] mx-auto" />
-              <h2 className="text-2xl sm:text-3xl font-bold text-[#445860]">
-                Quais efeitos colaterais você já sentiu?
-              </h2>
-              <p className="text-gray-600">Escolha as opções que se aplicam</p>
-            </div>
-
-            <div className="space-y-3">
-              {sideEffects.map((effect) => (
-                <button
-                  key={effect}
-                  onClick={() => toggleArrayItem('sideEffects', effect)}
-                  className={`w-full p-4 rounded-xl border-2 text-left transition-all ${
-                    formData.sideEffects.includes(effect)
-                      ? 'border-[#5AAE45] bg-green-50 text-[#5AAE45] font-semibold'
-                      : 'border-gray-200 hover:border-[#445860] text-gray-700'
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <div className={`w-5 h-5 rounded border-2 flex items-center justify-center ${
-                      formData.sideEffects.includes(effect)
-                        ? 'border-[#5AAE45] bg-[#5AAE45]'
-                        : 'border-gray-300'
-                    }`}>
-                      {formData.sideEffects.includes(effect) && (
-                        <CheckCircle2 className="w-4 h-4 text-white" />
-                      )}
-                    </div>
-                    {effect}
-                  </div>
-                </button>
-              ))}
-            </div>
-
-            {formData.sideEffects.includes('Outro') && (
-              <input
-                type="text"
-                value={formData.sideEffectsOther}
-                onChange={(e) => updateFormData('sideEffectsOther', e.target.value)}
-                placeholder="Especifique outros efeitos..."
-                className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-[#5AAE45] focus:outline-none transition-colors"
-              />
-            )}
-          </div>
-        )
-
-      // Etapa 15: Principal Motivo do Tratamento
-      case 16:
-        const timePeriods = [
-          'Alguns dias', 'Algumas semanas', 'Até 3 meses', 'Entre 3 e 6 meses',
-          'Entre 6 e 12 meses', 'Mais de um ano', 'Entre 1 e 3 anos',
-          'Entre 3 e 5 anos', 'Entre 5 e 10 anos', 'Entre 10 e 20 anos',
-          'Há mais de 20 anos'
-        ]
-        return (
-          <div className="space-y-6">
-            <div className="text-center space-y-2">
-              <Target className="w-16 h-16 text-[#5AAE45] mx-auto" />
-              <h2 className="text-2xl sm:text-3xl font-bold text-[#445860]">
-                Foco Principal
-              </h2>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Dos motivos que você selecionou, qual é o principal? *
-                </label>
-                <input
-                  type="text"
-                  value={formData.mainReason}
-                  onChange={(e) => updateFormData('mainReason', e.target.value)}
-                  placeholder="Digite o motivo principal"
-                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-[#5AAE45] focus:outline-none transition-colors"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Qual é a intensidade do seu sintoma? *
-                </label>
-                <div className="space-y-3">
-                  <input
-                    type="range"
-                    min="1"
-                    max="10"
-                    value={formData.symptomIntensity}
-                    onChange={(e) => updateFormData('symptomIntensity', parseInt(e.target.value))}
-                    className="w-full h-3 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-[#5AAE45]"
-                  />
-                  <div className="flex justify-between text-sm text-gray-600">
-                    <span>1 (menos intenso)</span>
-                    <span className="text-2xl font-bold text-[#5AAE45]">{formData.symptomIntensity}</span>
-                    <span>10 (mais intenso)</span>
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Há quanto tempo vive com isso? *
-                </label>
-                <select
-                  value={formData.timeLiving}
-                  onChange={(e) => updateFormData('timeLiving', e.target.value)}
-                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-[#5AAE45] focus:outline-none transition-colors"
-                >
-                  <option value="">Selecione o período</option>
-                  {timePeriods.map(period => (
-                    <option key={period} value={period}>{period}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          </div>
-        )
-
-      // Tela de Fechamento
-      case 17:
-        return (
-          <div className="space-y-6">
-            <div className="text-center space-y-4">
-              <div className="w-20 h-20 bg-gradient-to-br from-[#5AAE45] to-[#4a9d38] rounded-full flex items-center justify-center mx-auto">
-                <CheckCircle2 className="w-10 h-10 text-white" />
-              </div>
-              <h2 className="text-3xl sm:text-4xl font-bold text-[#445860]">
-                Parabéns por chegar até aqui!
-              </h2>
-              <p className="text-xl text-gray-600">
-                Seu esforço vale a pena para a sua saúde
-              </p>
-            </div>
-
-            <div className="bg-gradient-to-r from-[#5AAE45] to-[#4a9d38] text-white rounded-2xl p-8 text-center">
-              <p className="text-lg leading-relaxed">
-                Você completou todas as etapas! Agora só falta mais uma informação opcional.
-              </p>
-            </div>
-          </div>
-        )
-
-      // Etapa 16: Código de Indicação
-      case 18:
-        return (
-          <div className="space-y-6">
-            <div className="text-center space-y-2">
-              <Gift className="w-16 h-16 text-[#5AAE45] mx-auto" />
-              <h2 className="text-2xl sm:text-3xl font-bold text-[#445860]">
-                Possui um código de indicação?
-              </h2>
-              <p className="text-gray-600">Deixe em branco se não tiver um cupom</p>
-            </div>
-
-            <input
-              type="text"
-              value={formData.referralCode}
-              onChange={(e) => updateFormData('referralCode', e.target.value)}
-              placeholder="Digite seu código (opcional)"
-              className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-[#5AAE45] focus:outline-none transition-colors text-center text-lg"
-            />
-          </div>
-        )
-
-      // Tela de Conclusão
-      case 19:
-        return (
-          <div className="space-y-6">
-            <div className="text-center space-y-4">
-              <div className="w-24 h-24 bg-gradient-to-br from-[#5AAE45] to-[#4a9d38] rounded-full flex items-center justify-center mx-auto animate-bounce">
-                <CheckCircle2 className="w-12 h-12 text-white" />
-              </div>
-              <h2 className="text-3xl sm:text-4xl font-bold text-[#445860]">
-                Seu preenchimento foi concluído! 👍
-              </h2>
-              <p className="text-xl text-gray-600">
-                Obrigado por compartilhar suas informações
-              </p>
-            </div>
-
-            <div className="bg-gradient-to-r from-[#5AAE45] to-[#4a9d38] text-white rounded-2xl p-8 space-y-4">
-              <p className="text-lg leading-relaxed text-center">
-                Agora você pode acompanhar o progresso do seu tratamento!
-              </p>
-              <div className="grid grid-cols-2 gap-4 pt-4">
-                <div className="bg-white/20 rounded-xl p-4 text-center">
-                  <div className="text-3xl font-bold">100%</div>
-                  <div className="text-sm">Completo</div>
-                </div>
-                <div className="bg-white/20 rounded-xl p-4 text-center">
-                  <div className="text-3xl font-bold">{totalSteps}</div>
-                  <div className="text-sm">Etapas</div>
-                </div>
-              </div>
-            </div>
-
-            <button 
-              onClick={() => {
-                setScreen('login')
-                setCurrentStep(0)
-              }}
-              className="w-full bg-white border-2 border-[#5AAE45] text-[#5AAE45] py-4 rounded-xl font-semibold text-lg hover:bg-green-50 transition-all duration-300 hover:scale-[1.02]"
-            >
-              Voltar ao Início
-            </button>
-          </div>
-        )
-
-      default:
-        return null
-    }
-  }
-
-  // Renderização do Questionário
-  return (
-    <div className="min-h-screen bg-white flex flex-col">
-      {/* Header com Progresso */}
-      <div className="bg-gradient-to-br from-white to-gray-50 border-b-2 border-gray-100 py-6 px-4 sm:px-6">
-        <div className="max-w-3xl mx-auto">
-          <div className="flex items-center gap-3 mb-4">
-            <Image 
-              src="https://k6hrqrxuu8obbfwn.public.blob.vercel-storage.com/temp/7ddfae3d-7621-4fa3-8511-d4c5d3ddd754.png"
-              alt="MyKana"
-              width={180}
-              height={50}
-              className="h-10 w-auto"
-            />
-          </div>
-          
-          {/* Barra de Progresso */}
-          <div className="space-y-2">
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-700 font-medium">
-                Etapa {currentStep + 1} de {totalSteps + 4}
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-semibold text-slate-600">
+                Etapa {currentStep + 1} de {totalSteps}
               </span>
-              <span className="font-semibold text-[#5AAE45]">{Math.round(progress)}%</span>
+              <span className="text-sm font-semibold text-teal-600">
+                {Math.round(progress)}%
+              </span>
             </div>
-            <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
+            <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
               <div 
-                className="bg-gradient-to-r from-[#5AAE45] to-[#4a9d38] h-full rounded-full transition-all duration-500 ease-out"
+                className="h-full bg-gradient-to-r from-teal-500 to-cyan-600 transition-all duration-500"
                 style={{ width: `${progress}%` }}
               />
             </div>
           </div>
         </div>
-      </div>
 
-      {/* Conteúdo do Questionário */}
-      <div className="flex-1 px-4 py-8">
-        <div className="max-w-3xl mx-auto">
-          <div className="bg-white rounded-2xl border-2 border-gray-100 p-6 sm:p-8">
-            {renderQuestionnaireStep()}
-          </div>
-
-          {/* Botões de Navegação */}
-          <div className="flex gap-4 mt-6">
-            {currentStep > 0 && currentStep < 20 && (
-              <button
-                onClick={prevStep}
-                className="flex-1 bg-gray-100 text-gray-700 py-4 rounded-xl font-semibold hover:bg-gray-200 transition-all duration-300 flex items-center justify-center gap-2"
-              >
-                <ArrowLeft className="w-5 h-5" />
-                Voltar
-              </button>
+        {/* Conteúdo do Questionário */}
+        <div className="flex-1 flex items-center justify-center px-4 py-8">
+          <div className="w-full max-w-2xl">
+            {/* Etapa 1: Nome e Email */}
+            {currentStep === 0 && (
+              <div className="space-y-6">
+                <div className="text-center space-y-2">
+                  <h2 className="text-2xl sm:text-3xl font-bold text-slate-700">Vamos começar!</h2>
+                  <p className="text-slate-600">Primeiro, precisamos saber quem você é</p>
+                </div>
+                <div className="bg-white rounded-2xl border-2 border-slate-200 p-6 sm:p-8 space-y-4">
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">Nome completo</label>
+                    <input
+                      type="text"
+                      value={formData.fullName}
+                      onChange={(e) => updateFormData('fullName', e.target.value)}
+                      className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-teal-500 focus:outline-none transition-colors"
+                      placeholder="Digite seu nome completo"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">E-mail</label>
+                    <input
+                      type="email"
+                      value={formData.email}
+                      onChange={(e) => updateFormData('email', e.target.value)}
+                      className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-teal-500 focus:outline-none transition-colors"
+                      placeholder="seu@email.com"
+                    />
+                  </div>
+                </div>
+              </div>
             )}
-            
-            {currentStep < 19 && (
+
+            {/* Etapa 2: Senha */}
+            {currentStep === 1 && (
+              <div className="space-y-6">
+                <div className="text-center space-y-2">
+                  <h2 className="text-2xl sm:text-3xl font-bold text-slate-700">Crie sua senha</h2>
+                  <p className="text-slate-600">Escolha uma senha segura para sua conta</p>
+                </div>
+                <div className="bg-white rounded-2xl border-2 border-slate-200 p-6 sm:p-8 space-y-4">
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">Senha</label>
+                    <input
+                      type="password"
+                      value={formData.password}
+                      onChange={(e) => updateFormData('password', e.target.value)}
+                      className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-teal-500 focus:outline-none transition-colors"
+                      placeholder="Mínimo 8 caracteres"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">Confirme a senha</label>
+                    <input
+                      type="password"
+                      value={formData.confirmPassword}
+                      onChange={(e) => updateFormData('confirmPassword', e.target.value)}
+                      className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-teal-500 focus:outline-none transition-colors"
+                      placeholder="Digite a senha novamente"
+                    />
+                  </div>
+                  {formData.password && formData.confirmPassword && formData.password !== formData.confirmPassword && (
+                    <div className="bg-red-50 border-2 border-red-200 rounded-xl p-3">
+                      <p className="text-sm text-red-700">As senhas não coincidem</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Etapa 3: Telefone e CPF */}
+            {currentStep === 2 && (
+              <div className="space-y-6">
+                <div className="text-center space-y-2">
+                  <h2 className="text-2xl sm:text-3xl font-bold text-slate-700">Dados de contato</h2>
+                  <p className="text-slate-600">Para sua segurança e identificação</p>
+                </div>
+                <div className="bg-white rounded-2xl border-2 border-slate-200 p-6 sm:p-8 space-y-4">
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">Telefone</label>
+                    <input
+                      type="tel"
+                      value={formData.phone}
+                      onChange={(e) => updateFormData('phone', e.target.value)}
+                      className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-teal-500 focus:outline-none transition-colors"
+                      placeholder="(00) 00000-0000"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">CPF</label>
+                    <input
+                      type="text"
+                      value={formData.cpf}
+                      onChange={(e) => updateFormData('cpf', e.target.value)}
+                      className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-teal-500 focus:outline-none transition-colors"
+                      placeholder="000.000.000-00"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Etapa 4: Endereço - CEP */}
+            {currentStep === 3 && (
+              <div className="space-y-6">
+                <div className="text-center space-y-2">
+                  <h2 className="text-2xl sm:text-3xl font-bold text-slate-700">Seu endereço</h2>
+                  <p className="text-slate-600">Comece informando seu CEP</p>
+                </div>
+                <div className="bg-white rounded-2xl border-2 border-slate-200 p-6 sm:p-8 space-y-4">
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">CEP</label>
+                    <input
+                      type="text"
+                      value={formData.cep}
+                      onChange={(e) => updateFormData('cep', e.target.value)}
+                      className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-teal-500 focus:outline-none transition-colors"
+                      placeholder="00000-000"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Etapa 5: Endereço - Rua e Número */}
+            {currentStep === 4 && (
+              <div className="space-y-6">
+                <div className="text-center space-y-2">
+                  <h2 className="text-2xl sm:text-3xl font-bold text-slate-700">Endereço completo</h2>
+                  <p className="text-slate-600">Rua e número</p>
+                </div>
+                <div className="bg-white rounded-2xl border-2 border-slate-200 p-6 sm:p-8 space-y-4">
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">Rua</label>
+                    <input
+                      type="text"
+                      value={formData.street}
+                      onChange={(e) => updateFormData('street', e.target.value)}
+                      className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-teal-500 focus:outline-none transition-colors"
+                      placeholder="Nome da rua"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-2">Número</label>
+                      <input
+                        type="text"
+                        value={formData.number}
+                        onChange={(e) => updateFormData('number', e.target.value)}
+                        className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-teal-500 focus:outline-none transition-colors"
+                        placeholder="Nº"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-2">Complemento</label>
+                      <input
+                        type="text"
+                        value={formData.complement}
+                        onChange={(e) => updateFormData('complement', e.target.value)}
+                        className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-teal-500 focus:outline-none transition-colors"
+                        placeholder="Apto, sala..."
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Etapa 6: Endereço - Bairro, Cidade e Estado */}
+            {currentStep === 5 && (
+              <div className="space-y-6">
+                <div className="text-center space-y-2">
+                  <h2 className="text-2xl sm:text-3xl font-bold text-slate-700">Localização</h2>
+                  <p className="text-slate-600">Bairro, cidade e estado</p>
+                </div>
+                <div className="bg-white rounded-2xl border-2 border-slate-200 p-6 sm:p-8 space-y-4">
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">Bairro</label>
+                    <input
+                      type="text"
+                      value={formData.neighborhood}
+                      onChange={(e) => updateFormData('neighborhood', e.target.value)}
+                      className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-teal-500 focus:outline-none transition-colors"
+                      placeholder="Nome do bairro"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-2">Cidade</label>
+                      <input
+                        type="text"
+                        value={formData.city}
+                        onChange={(e) => updateFormData('city', e.target.value)}
+                        className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-teal-500 focus:outline-none transition-colors"
+                        placeholder="Cidade"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-2">Estado</label>
+                      <input
+                        type="text"
+                        value={formData.state}
+                        onChange={(e) => updateFormData('state', e.target.value)}
+                        className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-teal-500 focus:outline-none transition-colors"
+                        placeholder="UF"
+                        maxLength={2}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Etapa 7: Para quem é o tratamento */}
+            {currentStep === 6 && (
+              <div className="space-y-6">
+                <div className="text-center space-y-2">
+                  <h2 className="text-2xl sm:text-3xl font-bold text-slate-700">Para quem é o tratamento?</h2>
+                  <p className="text-slate-600">Selecione uma opção</p>
+                </div>
+                <div className="bg-white rounded-2xl border-2 border-slate-200 p-6 sm:p-8 space-y-3">
+                  {['Para mim', 'Para meu filho(a)', 'Para um familiar', 'Para outra pessoa', 'Outro'].map((option) => (
+                    <button
+                      key={option}
+                      onClick={() => updateFormData('treatmentFor', option)}
+                      className={`w-full text-left p-4 rounded-xl border-2 transition-all ${
+                        formData.treatmentFor === option
+                          ? 'bg-teal-50 border-teal-500'
+                          : 'border-slate-200 hover:border-teal-300'
+                      }`}
+                    >
+                      {option}
+                    </button>
+                  ))}
+                  {formData.treatmentFor === 'Outro' && (
+                    <input
+                      type="text"
+                      value={formData.treatmentForOther}
+                      onChange={(e) => updateFormData('treatmentForOther', e.target.value)}
+                      className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-teal-500 focus:outline-none transition-colors mt-3"
+                      placeholder="Especifique"
+                    />
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Etapa 8: Nome do paciente */}
+            {currentStep === 7 && (
+              <div className="space-y-6">
+                <div className="text-center space-y-2">
+                  <h2 className="text-2xl sm:text-3xl font-bold text-slate-700">Qual o nome do paciente?</h2>
+                  <p className="text-slate-600">Como devemos chamar a pessoa em tratamento?</p>
+                </div>
+                <div className="bg-white rounded-2xl border-2 border-slate-200 p-6 sm:p-8 space-y-4">
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">Nome do paciente</label>
+                    <input
+                      type="text"
+                      value={formData.patientName}
+                      onChange={(e) => updateFormData('patientName', e.target.value)}
+                      className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-teal-500 focus:outline-none transition-colors"
+                      placeholder="Digite o nome"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Etapa 9: Motivos do tratamento */}
+            {currentStep === 8 && (
+              <div className="space-y-6">
+                <div className="text-center space-y-2">
+                  <h2 className="text-2xl sm:text-3xl font-bold text-slate-700">Por que busca esse tratamento?</h2>
+                  <p className="text-slate-600">Selecione todos que se aplicam</p>
+                </div>
+                <div className="bg-white rounded-2xl border-2 border-slate-200 p-6 sm:p-8 space-y-3">
+                  {['Dor crônica', 'Ansiedade', 'Insônia', 'Depressão', 'Epilepsia', 'Náusea', 'Falta de apetite', 'Outro'].map((reason) => (
+                    <button
+                      key={reason}
+                      onClick={() => toggleArrayItem('treatmentReasons', reason)}
+                      className={`w-full text-left p-4 rounded-xl border-2 transition-all ${
+                        formData.treatmentReasons.includes(reason)
+                          ? 'bg-teal-50 border-teal-500'
+                          : 'border-slate-200 hover:border-teal-300'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span>{reason}</span>
+                        {formData.treatmentReasons.includes(reason) && (
+                          <Check className="w-5 h-5 text-teal-600" />
+                        )}
+                      </div>
+                    </button>
+                  ))}
+                  {formData.treatmentReasons.includes('Outro') && (
+                    <input
+                      type="text"
+                      value={formData.treatmentReasonsOther}
+                      onChange={(e) => updateFormData('treatmentReasonsOther', e.target.value)}
+                      className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-teal-500 focus:outline-none transition-colors mt-3"
+                      placeholder="Especifique outros motivos"
+                    />
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Etapa 10: Tipo de medicação */}
+            {currentStep === 9 && (
+              <div className="space-y-6">
+                <div className="text-center space-y-2">
+                  <h2 className="text-2xl sm:text-3xl font-bold text-slate-700">Que tipo de medicação você usa?</h2>
+                  <p className="text-slate-600">Selecione uma opção</p>
+                </div>
+                <div className="bg-white rounded-2xl border-2 border-slate-200 p-6 sm:p-8 space-y-3">
+                  {['Cannabis medicinal (CBD)', 'Cannabis medicinal (THC)', 'Cannabis medicinal (CBD + THC)', 'Outro'].map((type) => (
+                    <button
+                      key={type}
+                      onClick={() => updateFormData('medicationType', type)}
+                      className={`w-full text-left p-4 rounded-xl border-2 transition-all ${
+                        formData.medicationType === type
+                          ? 'bg-teal-50 border-teal-500'
+                          : 'border-slate-200 hover:border-teal-300'
+                      }`}
+                    >
+                      {type}
+                    </button>
+                  ))}
+                  {formData.medicationType === 'Outro' && (
+                    <input
+                      type="text"
+                      value={formData.medicationTypeOther}
+                      onChange={(e) => updateFormData('medicationTypeOther', e.target.value)}
+                      className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-teal-500 focus:outline-none transition-colors mt-3"
+                      placeholder="Especifique"
+                    />
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Etapa 11: Formulação */}
+            {currentStep === 10 && (
+              <div className="space-y-6">
+                <div className="text-center space-y-2">
+                  <h2 className="text-2xl sm:text-3xl font-bold text-slate-700">Qual a formulação?</h2>
+                  <p className="text-slate-600">Como você toma a medicação?</p>
+                </div>
+                <div className="bg-white rounded-2xl border-2 border-slate-200 p-6 sm:p-8 space-y-3">
+                  {['Óleo sublingual', 'Cápsula', 'Spray', 'Vaporização', 'Outro'].map((form) => (
+                    <button
+                      key={form}
+                      onClick={() => updateFormData('formulation', form)}
+                      className={`w-full text-left p-4 rounded-xl border-2 transition-all ${
+                        formData.formulation === form
+                          ? 'bg-teal-50 border-teal-500'
+                          : 'border-slate-200 hover:border-teal-300'
+                      }`}
+                    >
+                      {form}
+                    </button>
+                  ))}
+                  {formData.formulation === 'Outro' && (
+                    <input
+                      type="text"
+                      value={formData.formulationOther}
+                      onChange={(e) => updateFormData('formulationOther', e.target.value)}
+                      className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-teal-500 focus:outline-none transition-colors mt-3"
+                      placeholder="Especifique"
+                    />
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Etapa 12: Frequência */}
+            {currentStep === 11 && (
+              <div className="space-y-6">
+                <div className="text-center space-y-2">
+                  <h2 className="text-2xl sm:text-3xl font-bold text-slate-700">Com que frequência você toma?</h2>
+                  <p className="text-slate-600">Selecione a frequência</p>
+                </div>
+                <div className="bg-white rounded-2xl border-2 border-slate-200 p-6 sm:p-8 space-y-3">
+                  {['1x ao dia', '2x ao dia', '3x ao dia', '4x ou mais ao dia', 'Conforme necessário'].map((freq) => (
+                    <button
+                      key={freq}
+                      onClick={() => updateFormData('frequency', freq)}
+                      className={`w-full text-left p-4 rounded-xl border-2 transition-all ${
+                        formData.frequency === freq
+                          ? 'bg-teal-50 border-teal-500'
+                          : 'border-slate-200 hover:border-teal-300'
+                      }`}
+                    >
+                      {freq}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Etapa 13: Tipo de dose */}
+            {currentStep === 12 && (
+              <div className="space-y-6">
+                <div className="text-center space-y-2">
+                  <h2 className="text-2xl sm:text-3xl font-bold text-slate-700">Como você mede sua dose?</h2>
+                  <p className="text-slate-600">Selecione o tipo</p>
+                </div>
+                <div className="bg-white rounded-2xl border-2 border-slate-200 p-6 sm:p-8 space-y-3">
+                  {['Gotas', 'ml', 'mg', 'Puffs', 'Outro'].map((dose) => (
+                    <button
+                      key={dose}
+                      onClick={() => updateFormData('doseType', dose)}
+                      className={`w-full text-left p-4 rounded-xl border-2 transition-all ${
+                        formData.doseType === dose
+                          ? 'bg-teal-50 border-teal-500'
+                          : 'border-slate-200 hover:border-teal-300'
+                      }`}
+                    >
+                      {dose}
+                    </button>
+                  ))}
+                  {formData.doseType === 'Outro' && (
+                    <input
+                      type="text"
+                      value={formData.doseTypeOther}
+                      onChange={(e) => updateFormData('doseTypeOther', e.target.value)}
+                      className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-teal-500 focus:outline-none transition-colors mt-3"
+                      placeholder="Especifique"
+                    />
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Etapa 14: Quantidade da dose */}
+            {currentStep === 13 && (
+              <div className="space-y-6">
+                <div className="text-center space-y-2">
+                  <h2 className="text-2xl sm:text-3xl font-bold text-slate-700">Qual a quantidade por dose?</h2>
+                  <p className="text-slate-600">Informe a quantidade que você toma</p>
+                </div>
+                <div className="bg-white rounded-2xl border-2 border-slate-200 p-6 sm:p-8">
+                  <input
+                    type="text"
+                    value={formData.doseAmount}
+                    onChange={(e) => updateFormData('doseAmount', e.target.value)}
+                    className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-teal-500 focus:outline-none transition-colors"
+                    placeholder={`Ex: 5 ${formData.doseType || 'unidades'}`}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Etapa 15: Sexo biológico e data de nascimento */}
+            {currentStep === 14 && (
+              <div className="space-y-6">
+                <div className="text-center space-y-2">
+                  <h2 className="text-2xl sm:text-3xl font-bold text-slate-700">Informações pessoais</h2>
+                  <p className="text-slate-600">Para personalizar seu acompanhamento</p>
+                </div>
+                <div className="bg-white rounded-2xl border-2 border-slate-200 p-6 sm:p-8 space-y-4">
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">Sexo biológico</label>
+                    <div className="grid grid-cols-2 gap-3">
+                      {['Masculino', 'Feminino'].map((sex) => (
+                        <button
+                          key={sex}
+                          onClick={() => updateFormData('biologicalSex', sex)}
+                          className={`p-4 rounded-xl border-2 transition-all ${
+                            formData.biologicalSex === sex
+                              ? 'bg-teal-50 border-teal-500'
+                              : 'border-slate-200 hover:border-teal-300'
+                          }`}
+                        >
+                          {sex}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">Data de nascimento</label>
+                    <div className="grid grid-cols-3 gap-3">
+                      <input
+                        type="text"
+                        value={formData.birthDay}
+                        onChange={(e) => updateFormData('birthDay', e.target.value)}
+                        className="px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-teal-500 focus:outline-none transition-colors"
+                        placeholder="Dia"
+                        maxLength={2}
+                      />
+                      <input
+                        type="text"
+                        value={formData.birthMonth}
+                        onChange={(e) => updateFormData('birthMonth', e.target.value)}
+                        className="px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-teal-500 focus:outline-none transition-colors"
+                        placeholder="Mês"
+                        maxLength={2}
+                      />
+                      <input
+                        type="text"
+                        value={formData.birthYear}
+                        onChange={(e) => updateFormData('birthYear', e.target.value)}
+                        className="px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-teal-500 focus:outline-none transition-colors"
+                        placeholder="Ano"
+                        maxLength={4}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Etapa 16: Altura e peso */}
+            {currentStep === 15 && (
+              <div className="space-y-6">
+                <div className="text-center space-y-2">
+                  <h2 className="text-2xl sm:text-3xl font-bold text-slate-700">Medidas corporais</h2>
+                  <p className="text-slate-600">Ajuda a calcular dosagens ideais</p>
+                </div>
+                <div className="bg-white rounded-2xl border-2 border-slate-200 p-6 sm:p-8 space-y-4">
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">Altura (cm)</label>
+                    <input
+                      type="text"
+                      value={formData.height}
+                      onChange={(e) => updateFormData('height', e.target.value)}
+                      className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-teal-500 focus:outline-none transition-colors"
+                      placeholder="Ex: 170"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">Peso (kg)</label>
+                    <input
+                      type="text"
+                      value={formData.weight}
+                      onChange={(e) => updateFormData('weight', e.target.value)}
+                      className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-teal-500 focus:outline-none transition-colors"
+                      placeholder="Ex: 70"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Etapa 17: Nível de atividade */}
+            {currentStep === 16 && (
+              <div className="space-y-6">
+                <div className="text-center space-y-2">
+                  <h2 className="text-2xl sm:text-3xl font-bold text-slate-700">Nível de atividade física</h2>
+                  <p className="text-slate-600">Como você descreveria sua rotina?</p>
+                </div>
+                <div className="bg-white rounded-2xl border-2 border-slate-200 p-6 sm:p-8 space-y-3">
+                  {['Sedentário', 'Levemente ativo', 'Moderadamente ativo', 'Muito ativo', 'Extremamente ativo'].map((level) => (
+                    <button
+                      key={level}
+                      onClick={() => updateFormData('activityLevel', level)}
+                      className={`w-full text-left p-4 rounded-xl border-2 transition-all ${
+                        formData.activityLevel === level
+                          ? 'bg-teal-50 border-teal-500'
+                          : 'border-slate-200 hover:border-teal-300'
+                      }`}
+                    >
+                      {level}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Etapa 18: Alergias e condições de saúde */}
+            {currentStep === 17 && (
+              <div className="space-y-6">
+                <div className="text-center space-y-2">
+                  <h2 className="text-2xl sm:text-3xl font-bold text-slate-700">Histórico de saúde</h2>
+                  <p className="text-slate-600">Alergias e condições médicas</p>
+                </div>
+                <div className="bg-white rounded-2xl border-2 border-slate-200 p-6 sm:p-8 space-y-4">
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">Alergias conhecidas</label>
+                    <textarea
+                      value={formData.allergies}
+                      onChange={(e) => updateFormData('allergies', e.target.value)}
+                      className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-teal-500 focus:outline-none transition-colors min-h-[80px]"
+                      placeholder="Liste suas alergias ou escreva 'Nenhuma'"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">Condições de saúde</label>
+                    <textarea
+                      value={formData.healthConditions}
+                      onChange={(e) => updateFormData('healthConditions', e.target.value)}
+                      className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-teal-500 focus:outline-none transition-colors min-h-[80px]"
+                      placeholder="Diabetes, hipertensão, etc."
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">Medicamentos atuais</label>
+                    <textarea
+                      value={formData.currentMedications}
+                      onChange={(e) => updateFormData('currentMedications', e.target.value)}
+                      className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-teal-500 focus:outline-none transition-colors min-h-[80px]"
+                      placeholder="Liste outros medicamentos que você toma"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Etapa 19: Contato de emergência */}
+            {currentStep === 18 && (
+              <div className="space-y-6">
+                <div className="text-center space-y-2">
+                  <h2 className="text-2xl sm:text-3xl font-bold text-slate-700">Contato de emergência</h2>
+                  <p className="text-slate-600">Quem devemos contatar em caso de necessidade?</p>
+                </div>
+                <div className="bg-white rounded-2xl border-2 border-slate-200 p-6 sm:p-8 space-y-4">
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">Nome completo</label>
+                    <input
+                      type="text"
+                      value={formData.emergencyContactName}
+                      onChange={(e) => updateFormData('emergencyContactName', e.target.value)}
+                      className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-teal-500 focus:outline-none transition-colors"
+                      placeholder="Nome do contato"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">Telefone</label>
+                    <input
+                      type="tel"
+                      value={formData.emergencyContactPhone}
+                      onChange={(e) => updateFormData('emergencyContactPhone', e.target.value)}
+                      className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-teal-500 focus:outline-none transition-colors"
+                      placeholder="(00) 00000-0000"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">Relação</label>
+                    <input
+                      type="text"
+                      value={formData.emergencyContactRelation}
+                      onChange={(e) => updateFormData('emergencyContactRelation', e.target.value)}
+                      className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-teal-500 focus:outline-none transition-colors"
+                      placeholder="Ex: Mãe, Pai, Cônjuge, Amigo"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Etapa 20: Médico responsável */}
+            {currentStep === 19 && (
+              <div className="space-y-6">
+                <div className="text-center space-y-2">
+                  <h2 className="text-2xl sm:text-3xl font-bold text-slate-700">Médico responsável</h2>
+                  <p className="text-slate-600">Dados do médico que prescreveu o tratamento</p>
+                </div>
+                <div className="bg-white rounded-2xl border-2 border-slate-200 p-6 sm:p-8 space-y-4">
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">Nome do médico</label>
+                    <input
+                      type="text"
+                      value={formData.doctorName}
+                      onChange={(e) => updateFormData('doctorName', e.target.value)}
+                      className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-teal-500 focus:outline-none transition-colors"
+                      placeholder="Dr(a). Nome Completo"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">CRM</label>
+                    <input
+                      type="text"
+                      value={formData.doctorCRM}
+                      onChange={(e) => updateFormData('doctorCRM', e.target.value)}
+                      className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-teal-500 focus:outline-none transition-colors"
+                      placeholder="CRM 000000/UF"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">Telefone do consultório</label>
+                    <input
+                      type="tel"
+                      value={formData.doctorPhone}
+                      onChange={(e) => updateFormData('doctorPhone', e.target.value)}
+                      className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-teal-500 focus:outline-none transition-colors"
+                      placeholder="(00) 0000-0000"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Etapa 21: Plano de saúde */}
+            {currentStep === 20 && (
+              <div className="space-y-6">
+                <div className="text-center space-y-2">
+                  <h2 className="text-2xl sm:text-3xl font-bold text-slate-700">Plano de saúde</h2>
+                  <p className="text-slate-600">Você possui plano de saúde?</p>
+                </div>
+                <div className="bg-white rounded-2xl border-2 border-slate-200 p-6 sm:p-8 space-y-4">
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      onClick={() => updateFormData('hasHealthInsurance', true)}
+                      className={`p-4 rounded-xl border-2 transition-all ${
+                        formData.hasHealthInsurance
+                          ? 'bg-teal-50 border-teal-500'
+                          : 'border-slate-200 hover:border-teal-300'
+                      }`}
+                    >
+                      Sim
+                    </button>
+                    <button
+                      onClick={() => updateFormData('hasHealthInsurance', false)}
+                      className={`p-4 rounded-xl border-2 transition-all ${
+                        !formData.hasHealthInsurance
+                          ? 'bg-teal-50 border-teal-500'
+                          : 'border-slate-200 hover:border-teal-300'
+                      }`}
+                    >
+                      Não
+                    </button>
+                  </div>
+                  {formData.hasHealthInsurance && (
+                    <>
+                      <div>
+                        <label className="block text-sm font-semibold text-slate-700 mb-2">Nome do plano</label>
+                        <input
+                          type="text"
+                          value={formData.healthInsuranceName}
+                          onChange={(e) => updateFormData('healthInsuranceName', e.target.value)}
+                          className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-teal-500 focus:outline-none transition-colors"
+                          placeholder="Ex: Unimed, Amil, Bradesco Saúde"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-semibold text-slate-700 mb-2">Número da carteirinha</label>
+                        <input
+                          type="text"
+                          value={formData.healthInsuranceNumber}
+                          onChange={(e) => updateFormData('healthInsuranceNumber', e.target.value)}
+                          className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-teal-500 focus:outline-none transition-colors"
+                          placeholder="Número do cartão"
+                        />
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Etapa 22: Motivação pessoal */}
+            {currentStep === 21 && (
+              <div className="space-y-6">
+                <div className="text-center space-y-2">
+                  <h2 className="text-2xl sm:text-3xl font-bold text-slate-700">O que você mais espera desse tratamento?</h2>
+                  <p className="text-slate-600">Compartilhe sua motivação</p>
+                </div>
+                <div className="bg-white rounded-2xl border-2 border-slate-200 p-6 sm:p-8">
+                  <textarea
+                    value={formData.personalMotivation}
+                    onChange={(e) => updateFormData('personalMotivation', e.target.value)}
+                    className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-teal-500 focus:outline-none transition-colors min-h-[120px]"
+                    placeholder="Escreva aqui suas expectativas e objetivos..."
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Etapa 23: Termos e condições */}
+            {currentStep === 22 && (
+              <div className="space-y-6">
+                <div className="text-center space-y-2">
+                  <h2 className="text-2xl sm:text-3xl font-bold text-slate-700">Termos de uso</h2>
+                  <p className="text-slate-600">Leia e aceite para continuar</p>
+                </div>
+                <div className="bg-white rounded-2xl border-2 border-slate-200 p-6 sm:p-8 space-y-4">
+                  <div className="max-h-64 overflow-y-auto border-2 border-slate-200 rounded-xl p-4 text-sm text-slate-600">
+                    <h3 className="font-bold text-slate-700 mb-2">Termos de Uso do MyKana</h3>
+                    <p className="mb-2">
+                      Ao usar o MyKana, você concorda que este aplicativo é uma ferramenta de acompanhamento e não substitui orientação médica profissional.
+                    </p>
+                    <p className="mb-2">
+                      Todas as informações fornecidas são confidenciais e protegidas pela LGPD.
+                    </p>
+                    <p>
+                      Você é responsável por manter suas credenciais seguras e por todas as atividades realizadas em sua conta.
+                    </p>
+                  </div>
+                  <div className="space-y-3">
+                    <button
+                      onClick={() => updateFormData('acceptTerms', !formData.acceptTerms)}
+                      className={`w-full text-left p-4 rounded-xl border-2 transition-all ${
+                        formData.acceptTerms
+                          ? 'bg-teal-50 border-teal-500'
+                          : 'border-slate-200 hover:border-teal-300'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={`w-5 h-5 rounded border-2 flex items-center justify-center ${
+                          formData.acceptTerms ? 'bg-teal-500 border-teal-500' : 'border-slate-300'
+                        }`}>
+                          {formData.acceptTerms && <Check className="w-4 h-4 text-white" />}
+                        </div>
+                        <span className="text-sm">Aceito os Termos de Uso</span>
+                      </div>
+                    </button>
+                    <button
+                      onClick={() => updateFormData('acceptPrivacy', !formData.acceptPrivacy)}
+                      className={`w-full text-left p-4 rounded-xl border-2 transition-all ${
+                        formData.acceptPrivacy
+                          ? 'bg-teal-50 border-teal-500'
+                          : 'border-slate-200 hover:border-teal-300'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={`w-5 h-5 rounded border-2 flex items-center justify-center ${
+                          formData.acceptPrivacy ? 'bg-teal-500 border-teal-500' : 'border-slate-300'
+                        }`}>
+                          {formData.acceptPrivacy && <Check className="w-4 h-4 text-white" />}
+                        </div>
+                        <span className="text-sm">Aceito a Política de Privacidade</span>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Etapa 24: Preferências de notificação */}
+            {currentStep === 23 && (
+              <div className="space-y-6">
+                <div className="text-center space-y-2">
+                  <h2 className="text-2xl sm:text-3xl font-bold text-slate-700">Preferências de notificação</h2>
+                  <p className="text-slate-600">Como você quer ser lembrado?</p>
+                </div>
+                <div className="bg-white rounded-2xl border-2 border-slate-200 p-6 sm:p-8 space-y-4">
+                  <div className="space-y-3">
+                    <button
+                      onClick={() => updateFormData('wantDoseReminders', !formData.wantDoseReminders)}
+                      className={`w-full p-4 border-2 rounded-xl transition-all ${
+                        formData.wantDoseReminders
+                          ? 'bg-teal-50 border-teal-500'
+                          : 'border-slate-200'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="text-left">
+                          <p className="font-semibold text-slate-700">Lembretes de dose</p>
+                          <p className="text-sm text-slate-500">Receba notificações nos horários das doses</p>
+                        </div>
+                        <div className={`w-5 h-5 rounded border-2 flex items-center justify-center ${
+                          formData.wantDoseReminders ? 'bg-teal-500 border-teal-500' : 'border-slate-300'
+                        }`}>
+                          {formData.wantDoseReminders && <Check className="w-4 h-4 text-white" />}
+                        </div>
+                      </div>
+                    </button>
+                    <button
+                      onClick={() => updateFormData('wantDailyCheckins', !formData.wantDailyCheckins)}
+                      className={`w-full p-4 border-2 rounded-xl transition-all ${
+                        formData.wantDailyCheckins
+                          ? 'bg-teal-50 border-teal-500'
+                          : 'border-slate-200'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="text-left">
+                          <p className="font-semibold text-slate-700">Check-ins diários</p>
+                          <p className="text-sm text-slate-500">Lembrete para registrar como você está</p>
+                        </div>
+                        <div className={`w-5 h-5 rounded border-2 flex items-center justify-center ${
+                          formData.wantDailyCheckins ? 'bg-teal-500 border-teal-500' : 'border-slate-300'
+                        }`}>
+                          {formData.wantDailyCheckins && <Check className="w-4 h-4 text-white" />}
+                        </div>
+                      </div>
+                    </button>
+                    <button
+                      onClick={() => updateFormData('wantWeeklyReports', !formData.wantWeeklyReports)}
+                      className={`w-full p-4 border-2 rounded-xl transition-all ${
+                        formData.wantWeeklyReports
+                          ? 'bg-teal-50 border-teal-500'
+                          : 'border-slate-200'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="text-left">
+                          <p className="font-semibold text-slate-700">Relatórios semanais</p>
+                          <p className="text-sm text-slate-500">Resumo da sua evolução</p>
+                        </div>
+                        <div className={`w-5 h-5 rounded border-2 flex items-center justify-center ${
+                          formData.wantWeeklyReports ? 'bg-teal-500 border-teal-500' : 'border-slate-300'
+                        }`}>
+                          {formData.wantWeeklyReports && <Check className="w-4 h-4 text-white" />}
+                        </div>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Etapa 25: Código de indicação (opcional) */}
+            {currentStep === 24 && (
+              <div className="space-y-6">
+                <div className="text-center space-y-2">
+                  <h2 className="text-2xl sm:text-3xl font-bold text-slate-700">Quase lá!</h2>
+                  <p className="text-slate-600">Tem um código de indicação?</p>
+                </div>
+                <div className="bg-white rounded-2xl border-2 border-slate-200 p-6 sm:p-8 space-y-4">
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">Código de indicação (opcional)</label>
+                    <input
+                      type="text"
+                      value={formData.referralCode}
+                      onChange={(e) => updateFormData('referralCode', e.target.value)}
+                      className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-teal-500 focus:outline-none transition-colors"
+                      placeholder="Digite o código"
+                    />
+                  </div>
+                  <div className="bg-gradient-to-r from-teal-50 to-cyan-50 border-2 border-teal-500 rounded-xl p-4">
+                    <p className="text-sm text-slate-700 font-medium">
+                      🎁 Com um código de indicação, você e quem indicou ganham benefícios especiais!
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Botões de Navegação */}
+            <div className="flex gap-3 mt-8">
+              {currentStep > 0 && (
+                <button
+                  onClick={prevStep}
+                  className="flex-1 bg-white border-2 border-slate-200 text-slate-700 py-3 rounded-xl font-semibold hover:bg-slate-50 transition-all duration-300 flex items-center justify-center gap-2"
+                >
+                  <ArrowLeft className="w-5 h-5" />
+                  Voltar
+                </button>
+              )}
               <button
                 onClick={nextStep}
-                className="flex-1 bg-[#5AAE45] text-white py-4 rounded-xl font-semibold hover:bg-[#4a9d38] transition-all duration-300 hover:scale-[1.02] flex items-center justify-center gap-2"
+                className="flex-1 bg-teal-600 text-white py-3 rounded-xl font-semibold hover:bg-teal-700 transition-all duration-300 hover:scale-[1.02] flex items-center justify-center gap-2"
               >
-                {currentStep === 18 ? 'Finalizar' : 'Continuar'}
+                {currentStep === totalSteps - 1 ? 'Finalizar' : 'Continuar'}
                 <ArrowRight className="w-5 h-5" />
               </button>
-            )}
+            </div>
           </div>
         </div>
+      </div>
+    )
+  }
+
+  // Placeholder para outras telas
+  return (
+    <div className="min-h-screen bg-white flex items-center justify-center">
+      <div className="text-center">
+        <h1 className="text-2xl font-bold text-slate-700 mb-4">Tela em desenvolvimento</h1>
+        <button
+          onClick={() => setScreen('login')}
+          className="bg-teal-600 text-white px-6 py-3 rounded-xl font-semibold hover:bg-teal-700 transition-all"
+        >
+          Voltar ao Login
+        </button>
       </div>
     </div>
   )
